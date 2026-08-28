@@ -291,14 +291,16 @@ Both [[Environmental Science]] and [[Data Science]] utilize [[Satellite Image An
 
 def seed_database():
     conn = get_db_conn()
-    doc_count = conn.execute("SELECT COUNT(*) AS n FROM documents").fetchone()["n"]
+    is_pg = db.is_postgres
+    ph = "%s" if is_pg else "?"
+    doc_count = conn.execute(f"SELECT COUNT(*) AS n FROM documents").fetchone()["n"]
     if doc_count == 0:
         for p in get_demo_research():
             doc_id = str(uuid.uuid4())
             created_at = datetime.now(timezone.utc).isoformat()
             
             conn.execute(
-                "INSERT INTO documents (id, title, filename, department, document_type, content, abstract, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                f"INSERT INTO documents (id, title, filename, department, document_type, content, abstract, created_at) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
                 (doc_id, p["title"], p["filename"], p["department"], p["document_type"], p["content"], p["abstract"], created_at)
             )
             
@@ -342,7 +344,7 @@ def seed_database():
     conn.close()
 
 
-seed_database()
+# seed_database()  # Disabled - start with empty workspace
 
 
 # ============================================================================
@@ -428,10 +430,11 @@ def get_documents():
     rows = conn.execute("SELECT id, title, filename, department, document_type, abstract, created_at FROM documents ORDER BY created_at DESC").fetchall()
     
     docs = []
+    ph = db.ph
     for r in rows:
         d = dict(r)
         # Add entity count for card
-        ent_count = conn.execute("SELECT COUNT(*) AS n FROM document_entities WHERE document_id = ?", (d["id"],)).fetchone()["n"]
+        ent_count = conn.execute(f"SELECT COUNT(*) AS n FROM document_entities WHERE document_id = {ph}", (d["id"],)).fetchone()["n"]
         d["entities_count"] = ent_count
         d["status"] = "Analyzed"
         docs.append(d)
@@ -443,16 +446,17 @@ def get_documents():
 @app.get("/api/documents/{doc_id}")
 def get_document(doc_id: str):
     conn = get_db_conn()
-    doc = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
+    ph = db.ph
+    doc = conn.execute(f"SELECT * FROM documents WHERE id = {ph}", (doc_id,)).fetchone()
     if not doc:
         conn.close()
         raise HTTPException(status_code=404, detail="Document not found")
         
-    ents = conn.execute("""
+    ents = conn.execute(f"""
         SELECT e.id, e.name, e.entity_type, e.description 
         FROM entities e 
         JOIN document_entities de ON de.entity_id = e.id 
-        WHERE de.document_id = ?
+        WHERE de.document_id = {ph}
         ORDER BY e.entity_type, e.name
     """, (doc_id,)).fetchall()
     
@@ -475,12 +479,13 @@ async def upload_document(
         raise HTTPException(status_code=400, detail=f"File parsing error: {e}")
 
     conn = get_db_conn()
+    ph = db.ph
     doc_id = str(uuid.uuid4())
     doc_dept = department or parsed.get("department") or "Interdisciplinary Research"
     created_at = datetime.now(timezone.utc).isoformat()
 
     conn.execute(
-        "INSERT INTO documents (id, title, filename, department, document_type, content, abstract, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO documents (id, title, filename, department, document_type, content, abstract, created_at) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
         (doc_id, parsed["title"], file.filename, doc_dept, parsed["document_type"], parsed["content"], parsed["abstract"], created_at)
     )
     conn.commit()
@@ -500,7 +505,8 @@ async def upload_document(
 @app.post("/api/analyze/{doc_id}")
 def analyze_document(doc_id: str):
     conn = get_db_conn()
-    doc = conn.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
+    ph = db.ph
+    doc = conn.execute(f"SELECT * FROM documents WHERE id = {ph}", (doc_id,)).fetchone()
     if not doc:
         conn.close()
         raise HTTPException(status_code=404, detail="Document not found")
@@ -603,11 +609,12 @@ def rename_document(doc_id: str, payload: DocumentRenameReq):
     if not new_title:
         raise HTTPException(status_code=400, detail="Title cannot be empty")
     conn = get_db_conn()
-    existing = conn.execute("SELECT id FROM documents WHERE id = ?", (doc_id,)).fetchone()
+    ph = db.ph
+    existing = conn.execute(f"SELECT id FROM documents WHERE id = {ph}", (doc_id,)).fetchone()
     if not existing:
         conn.close()
         raise HTTPException(status_code=404, detail="Document not found")
-    conn.execute("UPDATE documents SET title = ? WHERE id = ?", (new_title, doc_id))
+    conn.execute(f"UPDATE documents SET title = {ph} WHERE id = {ph}", (new_title, doc_id))
     conn.commit()
     conn.close()
     return {"status": "renamed", "id": doc_id, "title": new_title}
@@ -696,7 +703,8 @@ def _resolve_document_content(payload: AIDocReq) -> tuple[str, str, str, str, st
     """Helper to fetch document content by id or fallback to payload text."""
     if payload.document_id:
         conn = get_db_conn()
-        doc = conn.execute("SELECT * FROM documents WHERE id = ?", (payload.document_id,)).fetchone()
+        ph = db.ph
+        doc = conn.execute(f"SELECT * FROM documents WHERE id = {ph}", (payload.document_id,)).fetchone()
         conn.close()
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
@@ -761,8 +769,9 @@ def ai_document_action(payload: AIActionReq):
 @app.post("/api/ai/compare")
 def ai_compare(payload: AICompareReq):
     conn = get_db_conn()
-    doc_a = conn.execute("SELECT * FROM documents WHERE id = ?", (payload.document_id_a,)).fetchone()
-    doc_b = conn.execute("SELECT * FROM documents WHERE id = ?", (payload.document_id_b,)).fetchone()
+    ph = db.ph
+    doc_a = conn.execute(f"SELECT * FROM documents WHERE id = {ph}", (payload.document_id_a,)).fetchone()
+    doc_b = conn.execute(f"SELECT * FROM documents WHERE id = {ph}", (payload.document_id_b,)).fetchone()
     conn.close()
     if not doc_a or not doc_b:
         raise HTTPException(status_code=404, detail="One or both documents not found")
@@ -772,10 +781,11 @@ def ai_compare(payload: AICompareReq):
 @app.post("/api/ai/chat")
 def ai_chat(payload: AIChatReq):
     conn = get_db_conn()
+    ph = db.ph
     documents = []
     if payload.document_ids:
         for did in payload.document_ids:
-            row = conn.execute("SELECT * FROM documents WHERE id = ?", (did,)).fetchone()
+            row = conn.execute(f"SELECT * FROM documents WHERE id = {ph}", (did,)).fetchone()
             if row:
                 documents.append(dict(row))
     else:
@@ -809,7 +819,8 @@ def get_global_graph(type: Optional[str] = None):
             "degree": len(n.get("wikilinks", [])) + 1
         })
         for link in n.get("wikilinks", []):
-            ent = conn.execute("SELECT id FROM entities WHERE lower(name) = lower(?)", (link.strip(),)).fetchone()
+            ph = db.ph
+            ent = conn.execute(f"SELECT id FROM entities WHERE lower(name) = lower({ph})", (link.strip(),)).fetchone()
             if ent:
                 graph_data["edges"].append({
                     "id": f"note_edge_{n['id']}_{ent['id']}",
@@ -864,8 +875,9 @@ def get_datasets_matching():
 @app.get("/api/entities")
 def get_entities(type: Optional[str] = None):
     conn = get_db_conn()
+    ph = db.ph
     if type and type.upper() != "ALL":
-        rows = conn.execute("SELECT * FROM entities WHERE entity_type = ? ORDER BY name", (type.upper(),)).fetchall()
+        rows = conn.execute(f"SELECT * FROM entities WHERE entity_type = {ph} ORDER BY name", (type.upper(),)).fetchall()
     else:
         rows = conn.execute("SELECT * FROM entities ORDER BY entity_type, name").fetchall()
     conn.close()
@@ -875,7 +887,8 @@ def get_entities(type: Optional[str] = None):
 @app.get("/api/entities/{entity_id}")
 def get_entity_detail(entity_id: str):
     conn = get_db_conn()
-    entity = conn.execute("SELECT * FROM entities WHERE id = ?", (entity_id,)).fetchone()
+    ph = db.ph
+    entity = conn.execute(f"SELECT * FROM entities WHERE id = {ph}", (entity_id,)).fetchone()
     if not entity:
         conn.close()
         raise HTTPException(status_code=404, detail="Entity not found")

@@ -1,110 +1,139 @@
-# Research Nexus – University Research Knowledge Graph & Dataset Matching Engine
+# Research Nexus
 
+**AI-Powered Research Workspace & University Knowledge Graph Platform**
 
-## Security & Local Developer Guidance
+An automated, cloud-ready research workspace that breaks down university research silos. It discovers cross-disciplinary papers, detects matching datasets across departments, surfaces hidden collaboration opportunities, and identifies potentially redundant studies — all powered by a hybrid AI extraction engine and a persistent Supabase PostgreSQL + pgvector knowledge graph.
 
-This project includes several built-in safety measures to avoid accidental secret leakage and to make mock AI mode explicit.
-
-- Do NOT commit .env or service account key files. A sample .env.example is provided.
-- To enable local pre-commit secret checks, run:
-
-  cp pre-commit-checks.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
-
-  or use a repository hooks path:
-
-  git config core.hooksPath .githooks && mkdir -p .githooks && cp pre-commit-checks.sh .githooks/pre-commit && chmod +x .githooks/pre-commit
-
-- Mock AI mode must never be enabled in production. If NODE_ENV=production and MOCK_AI=true the server will refuse to start.
-- To run the backend locally with real OpenRouter credentials, set OPENROUTER_API_KEY in your environment and keep AI_PROVIDER=openrouter. If it's missing a prominent warning is logged at startup and the UI will surface that OpenRouter is not configured. – University Research Knowledge Graph & Dataset Matching Engine
-An automated, cloud-ready AI knowledge graph platform designed to break down university research silos. It discovers cross-disciplinary papers, detects matching datasets across departments, surfaces hidden collaboration opportunities, and identifies potentially redundant studies.
+> **Status**: Student/Hackathon Project — Actively maintained, production-capable backend, open for contributions.
 
 ---
 
-## 🏛️ Problem Statement
+## Problem Statement
+
 University research is heavily siloed across disparate academic departments. Researchers struggle to discover:
+
 - **Cross-disciplinary research & papers**
 - **Matching benchmark datasets** used by adjacent labs (e.g. Computer Science and Biomedical Engineering both independently leveraging MIMIC-IV)
 - **Hidden collaboration synergies** and co-authorship opportunities
 - **Redundant or overlapping studies** duplicating compute and experimental effort
 
+Research Nexus solves this by automatically extracting entities, relationships, and embeddings from research documents and building a live, queryable knowledge graph.
+
 ---
 
-## 🚀 Target Google Cloud Architecture
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Document Ingestion** | Upload PDF, Markdown, plain text, or code repositories (ZIP). Automatic parsing and content extraction. |
+| **AI Entity Extraction** | Hybrid engine: OpenRouter (google/gemma-4-31b-it) for cloud mode; deterministic rule-based NLP for local fallback. Extracts papers, researchers, departments, datasets, methods, technologies, and topics. |
+| **Vector Embeddings** | 768-dimensional dense vectors for semantic search. Stored in pgvector for efficient cosine similarity (`<=>`). |
+| **Knowledge Graph** | Interactive Cytoscape visualization with force-directed layout, entity type filtering, and side-drawer inspector. |
+| **Dataset Matching Hub** | First-class detection of datasets shared across departments with applied methods, active researchers, and synergy scoring. |
+| **Collaboration Discovery** | Multi-factor scoring (shared datasets, complementary methods, semantic proximity) to surface cross-disciplinary opportunities. |
+| **Redundancy Detection** | Compares abstract embeddings, methodologies, and datasets; flags High/Moderate/Domain-Parallelism overlap with actionable recommendations. |
+| **Obsidian-Style Notes** | Wikilink (`[[...]]`) support, bi-directional linking to entities, pinning, tagging, and graph visualization. |
+| **Semantic Search** | Vector similarity + keyword boosting across papers, datasets, and methods. |
+| **AI Workspace Actions** | Summarize, deep-analyze, methodology extraction, research ideas, questions, chat with sources, and document comparison — all evidence-grounded. |
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Backend** | FastAPI (Python 3.11+), Uvicorn |
+| **Database** | Supabase PostgreSQL + pgvector (vector similarity search) |
+| **AI Provider** | OpenRouter (OpenAI-compatible API) — primary: `google/gemma-4-31b-it`; free-tier fallback models |
+| **Local Fallback** | Deterministic rule-based NLP + 768-dim embeddings (no external API required) |
+| **Frontend** | Vanilla ES6 + Vite, Cytoscape.js (graph), Tailwind CSS (styling) |
+| **Deployment** | Docker, Cloud Run ready |
+
+---
+
+## Architecture
 
 ```
-                               ┌───────────────────────────────────────────────┐
-                               │             RESEARCH NEXUS UI                 │
-                               │  - Knowledge Graph (Cytoscape + Filters)     │
-                               │  - Dataset Matching & Cross-Dept Reuse Hub    │
-                               │  - Semantic Research Search & Embeddings      │
-                               │  - Cross-Disciplinary Collaboration Insights  │
-                               │  - Research Redundancy & Deduplication Engine │
-                               │  - Multi-format Ingestion Studio (PDF/MD/ZIP) │
-                               └───────────────────────┬───────────────────────┘
-                                                       │ REST API / CORS
-                                                       ▼
-                               ┌───────────────────────────────────────────────┐
-                               │       CLOUD RUN / FASTAPI BACKEND             │
-                               │  - Ingestion Engine (PDF, MD, Code/ZIP, Py)   │
-                               │  - Hybrid Entity & Relationship Extractor     │
-                               │  - Vector Embedding Generator (Dual Engine)   │
-                               │  - Graph & Synergy Analytics Engine           │
-                               └──────────────┬─────────────────┬──────────────┘
-                                              │                 │
-                      ┌───────────────────────┘                 └───────────────────────┐
-                      ▼                                                                 ▼
-   ┌─────────────────────────────────────┐                           ┌─────────────────────────────────────┐
-   │       OPENROUTER / GEMMA LAYER       │                           │      ALLOYDB / PGVECTOR LAYER       │
-   │                                     │                           │                                     │
-   │  [Cloud Mode]:                      │                           │  [Cloud Mode]:                      │
-   │   - OpenRouter API (OpenAI-compatible) │                         │   - AlloyDB for PostgreSQL          │
-   │   - google/gemma-4-31b-it           │                           │   - pgvector Cosine Search (<=>)    │
-   │                                     │                           │                                     │
-   │  [Local Fallback Mode]:             │                           │  [Local Fallback Mode]:             │
-   │   - Smart Rule/NLP Heuristic Engine │                           │   - SQLite (research_nexus.db)      │
-   │   - Deterministic 768-dim Embedder  │                           │   - Vector Cosine Distance Engine   │
-   └─────────────────────────────────────┘                           └─────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     RESEARCH NEXUS UI                           │
+│  Knowledge Graph • Dataset Matching • Collaboration Hub        │
+│  Redundancy Detection • Semantic Search • Notes Workspace      │
+└─────────────────────────────────┬───────────────────────────────┘
+                                  │ REST API / CORS
+                                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    FASTAPI BACKEND                              │
+│  Ingestion Engine • Hybrid Entity Extractor • Embedding Gen    │
+│  Graph Analytics • Dataset Matching • Redundancy Engine        │
+└────────────────────────────┬─────────────────────┬──────────────┘
+                             │                     │
+              ┌──────────────┘                     └──────────────┐
+              ▼                                                   ▼
+┌─────────────────────────────────┐     ┌─────────────────────────────────┐
+│      AI PROVIDER LAYER          │     │      DATABASE LAYER             │
+│                                 │     │                                 │
+│  [Cloud]: OpenRouter API        │     │  [Primary]: Supabase PostgreSQL │
+│  - google/gemma-4-31b-it        │     │  - pgvector extension           │
+│  - free-tier fallbacks          │     │  - Vector cosine search         │
+│                                 │     │                                 │
+│  [Local]: Rule-based NLP        │     │  [Dev]: SQLite (fallback only)  │
+│  - Deterministic 768-dim vecs   │     │  - Vector cosine distance       │
+└─────────────────────────────────┘     └─────────────────────────────────┘
 ```
 
-- **OpenRouter**: google/gemma-4-31b-it via the server-side OpenAI-compatible OpenRouter API for analysis and graph extraction.
-- **AlloyDB / PostgreSQL (pgvector)**: Persistent knowledge graph store, document catalog, and vector similarity search (`<=>`).
-- **Cloud Run**: Containerized backend API and async ingestion engine.
-- **Frontend**: Interactive Cytoscape knowledge graph, real-time dataset matching hub, collaboration analytics, and redundancy insights.
-
 ---
 
-## 🌟 Key Features
+## Quick Start
 
-1. **First-Class Dataset Matching Hub**:
-   - Explicitly identifies datasets shared across departments:
-   > **"🔥 MIMIC-IV is being used by research projects across 2 departments (Computer Science, Biomedical Engineering)"**
-   - Displays applied methods, active researchers, and joint data asset opportunities.
+### Prerequisites
 
-2. **Multi-Format Document & Code Ingestion**:
-   - Ingests raw PDFs, structured Markdown, plain text, and complete **Code Repositories (`.zip` archives, `.py`, `.ipynb`)**.
-   - Extracts code libraries (PyTorch, Transformers, JAX), model definitions, and referenced datasets.
+- Python 3.11+
+- Node.js 18+
+- Supabase account (for PostgreSQL + pgvector)
+- OpenRouter API key (for cloud AI mode)
 
-3. **Hybrid AI Extraction & Embeddings (Cloud + Local Fallback)**:
-   - **OpenRouter Mode**: Evidence-grounded google/gemma-4-31b-it structured extraction.
-   - **Local Fallback Mode**: High-precision academic taxonomy and deterministic 768-dimensional normalized dense vectors.
+### 1. Clone & Configure Environment
 
-4. **Cross-Disciplinary Collaboration Discovery**:
-   - Multi-factor synergy scoring based on shared datasets, complementary methods, and semantic vector distance.
-   - Generates actionable collaboration proposals and joint grant rationales.
+```bash
+git clone https://github.com/your-username/research-nexus.git
+cd research-nexus
 
-5. **Research Redundancy Detection**:
-   - Compares abstract embeddings, methodologies, and datasets.
-   - Highlights overlap risk levels (High / Moderate / Domain Parallelism) and suggests joint benchmarking.
+# Copy example environment file
+cp .env.example .env
+```
 
-6. **Interactive Cytoscape Knowledge Graph**:
-   - Dynamic force-directed physics layout with color-coded entity types (Paper, Researcher, Department, Dataset, Method, Topic, Technology).
-   - Entity type filtering, node search, and full side-drawer Entity Inspector.
+Edit `.env` with your credentials:
 
----
+```bash
+# Supabase (required for PostgreSQL + pgvector)
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your_publishable_key
+SUPABASE_SECRET_KEY=your_secret_key
+SUPABASE_JWKS_URL=https://YOUR_PROJECT_REF.supabase.co/auth/v1/.well-known/jwks.json
 
-## ⚙️ Quick Start (Local Demo Mode)
+# Database — use Supabase session pooler (port 6543)
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@YOUR_POOLER_HOST:6543/postgres
 
-### Backend
+# AI Provider (OpenRouter)
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=your_openrouter_api_key
+AI_MODEL=google/gemma-4-31b-it
+MOCK_AI=false
+```
+
+> **Security**: Never commit `.env`. It is in `.gitignore`. Use `.env.example` as a template only.
+
+### 2. Supabase Setup
+
+1. Create a new Supabase project
+2. Enable the **pgvector** extension: `CREATE EXTENSION IF NOT EXISTS vector;`
+3. Run the schema from `backend/migrations/001_initial_schema.sql` in the Supabase SQL editor
+4. Get your database password from Settings → Database
+5. Get the **Session Pooler** connection string from Settings → Database → Connection pooling (port 6543)
+6. Update `DATABASE_URL` in `.env` with the pooler host and your password
+
+### 3. Run Backend
+
 ```bash
 cd backend
 python3 -m venv .venv
@@ -112,79 +141,187 @@ source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
-API Documentation will be live at: [http://localhost:8000/docs](http://localhost:8000/docs).
 
-### Frontend
+API docs: http://localhost:8000/docs
+
+### 4. Run Frontend
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Open [http://localhost:5173](http://localhost:5173).
+
+Open http://localhost:5173
 
 ---
 
-## ☁️ Google Cloud Deployment
+## Environment Variables
 
-### 1. Configure Environment Variables
-Set the following server-side variables in `.env` or in Cloud Run:
-```bash
-export AI_PROVIDER="openrouter"
-export OPENROUTER_API_KEY="your_openrouter_api_key"
-export AI_MODEL="google/gemma-4-31b-it"
-export MOCK_AI=false
-# Optional: AlloyDB connection string
-export DATABASE_URL="postgresql://postgres:PASSWORD@ALLOYDB_IP:5432/research_nexus"
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SUPABASE_URL` | Yes | Supabase project URL |
+| `SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase anon/public key |
+| `SUPABASE_SECRET_KEY` | Yes | Supabase service role key |
+| `SUPABASE_JWKS_URL` | Yes | JWKS endpoint for auth |
+| `DATABASE_URL` | Yes | PostgreSQL connection string (use pooler port 6543) |
+| `AI_PROVIDER` | No | `openrouter` (default) |
+| `OPENROUTER_API_KEY` | For cloud mode | OpenRouter API key |
+| `AI_MODEL` | No | Model ID (default: `google/gemma-4-31b-it`) |
+| `MOCK_AI` | No | `true`/`false` — forces local deterministic engine |
+| `NODE_ENV` | No | `development` / `production` |
+
+---
+
+## API Reference
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/health` | Service health, DB engine, AI mode |
+| `GET` | `/api/stats` | Document, entity, relationship, dataset counts |
+| `GET` | `/api/datasets` | Dataset matching & cross-department reuse |
+| `GET` | `/api/graph` | Knowledge graph (nodes/edges for Cytoscape) |
+| `GET` | `/api/search?q=...` | Semantic vector search |
+| `GET` | `/api/collaborations` | Cross-disciplinary opportunities |
+| `GET` | `/api/redundancy` | Research overlap detection |
+| `GET` | `/api/documents` | List all documents |
+| `GET` | `/api/documents/{id}` | Document with entities |
+| `POST` | `/api/upload` | Upload PDF/MD/TXT/ZIP |
+| `POST` | `/api/analyze/{id}` | Run AI extraction + embeddings |
+| `GET` | `/api/entities` | List all entities |
+| `GET` | `/api/entities/{id}` | Entity details with linked papers |
+| `GET` | `/api/notes` | List all notes |
+| `POST` | `/api/notes` | Create note (supports wikilinks) |
+| `PATCH` | `/api/notes/{id}` | Update note |
+| `DELETE` | `/api/notes/{id}` | Delete note |
+| `POST` | `/api/ai/summarize` | AI summary of document |
+| `POST` | `/api/ai/analyze` | Deep analysis with entities |
+| `POST` | `/api/ai/methodology` | Extract methodology |
+| `POST` | `/api/ai/research-ideas` | Generate research ideas |
+| `POST` | `/api/ai/questions` | Generate research questions |
+| `POST` | `/api/ai/chat` | Chat with document sources |
+| `POST` | `/api/ai/compare` | Compare two documents |
+
+---
+
+## Project Structure
+
+```
+research-nexus/
+├── backend/
+│   ├── main.py                 # FastAPI app, routes, startup
+│   ├── database.py             # PostgreSQL/SQLite abstraction, schema, CRUD
+│   ├── ai_engine.py            # Hybrid entity extraction + embeddings
+│   ├── ai_service.py           # AI workspace actions (summarize, analyze, etc.)
+│   ├── ai_prompts.py           # Structured prompts for OpenRouter
+│   ├── analytics.py            # Dataset matching, collaborations, redundancy, graph
+│   ├── ingestion.py            # PDF/MD/TXT/ZIP parsing
+│   ├── config.py               # Settings management
+│   ├── test_api.py             # Backend test suite (23 tests)
+│   ├── migrations/
+│   │   └── 001_initial_schema.sql  # Supabase schema with pgvector
+│   ├── requirements.txt        # Python dependencies
+│   └── Dockerfile              # Container build
+├── frontend/
+│   ├── src/
+│   │   ├── main.jsx            # App entry, routing, state
+│   │   ├── components/         # React-like components (vanilla)
+│   │   └── styles.css          # Tailwind + custom styles
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.js
+├── deploy/                     # Deployment configs (if any)
+├── .env.example                # Environment template
+├── .gitignore
+├── docker-compose.yml
+└── README.md
 ```
 
-### 2. Deploy to Cloud Run
-```bash
-gcloud builds submit --tag gcr.io/$GOOGLE_CLOUD_PROJECT/research-nexus:latest backend/
+---
 
+## Testing
+
+```bash
+cd backend
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m pytest test_api.py -v
+```
+
+**Expected**: 23/23 tests pass against Supabase PostgreSQL.
+
+---
+
+## Security
+
+- **Never commit `.env`** — it contains Supabase keys, database passwords, and OpenRouter API keys.
+- `.env` is in `.gitignore` with `!.env.example` to allow the template.
+- No secrets are hardcoded in source code.
+- Supabase RLS (Row Level Security) can be enabled for production multi-tenant use.
+- `MOCK_AI=true` forces the deterministic local engine (no external API calls).
+
+---
+
+## Deployment
+
+### Docker
+
+```bash
+docker-compose up --build
+```
+
+### Cloud Run (GCP)
+
+```bash
+gcloud builds submit --tag gcr.io/$PROJECT_ID/research-nexus:latest backend/
 gcloud run deploy research-nexus \
-  --image gcr.io/$GOOGLE_CLOUD_PROJECT/research-nexus:latest \
+  --image gcr.io/$PROJECT_ID/research-nexus:latest \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars AI_PROVIDER=openrouter,AI_MODEL=google/gemma-4-31b-it,MOCK_AI=false
+  --set-env-vars="AI_PROVIDER=openrouter,OPENROUTER_API_KEY=...,AI_MODEL=google/gemma-4-31b-it,MOCK_AI=false,DATABASE_URL=..."
 ```
 
 ---
 
-## 📡 REST API Reference
+## License
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/health` | Service health, active OpenRouter / mock mode, DB engine |
-| `GET` | `/api/stats` | Document, entity, relationship, and dataset metric counts |
-| `GET` | `/api/datasets` | **First-class dataset matching & cross-department reuse intelligence** |
-| `GET` | `/api/graph` | Knowledge graph nodes and edges for Cytoscape (supports `?type=...`) |
-| `GET` | `/api/search?q=...` | Semantic vector search across papers, datasets, and methods |
-| `GET` | `/api/collaborations` | Cross-disciplinary collaboration opportunities and synergy scores |
-| `GET` | `/api/redundancy` | Research overlap and redundancy detection with recommendations |
-| `GET` | `/api/documents` | List all ingested research documents |
-| `GET` | `/api/entities/{id}` | Detailed entity inspector with direct links and connected papers |
-| `POST` | `/api/upload` | Upload PDF, Markdown, TXT, or Code Repository ZIP |
-| `POST` | `/api/analyze/{id}` | Run entity extraction, vector embedding, and update graph |
-| `POST` | `/api/seed` | Reset and seed benchmark research papers |
+MIT License — Free for personal, educational, and commercial use.
+
+```
+MIT License
+
+Copyright (c) 2025 Research Nexus Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ---
 
-## 🎬 2-Minute Demo Script
+## Acknowledgments
 
-1. **System Health & GCP Mode**:
-   - Point out the active mode badges in the top header: `OpenRouter (google/gemma-4-31b-it)` and `AlloyDB / pgvector` (or Local Fallback).
-2. **First-Class Dataset Matching**:
-   - Highlight the **Dataset Matching Hub**: show **"MIMIC-IV is being used by research projects across 2 departments (Computer Science, Biomedical Engineering)"**.
-   - Show how Dr. Alice Smith (CS) and Dr. Brian Lee (Biomedical Engineering) are both leveraging the same data asset.
-3. **Interactive Knowledge Graph**:
-   - Filter graph by `Dataset` and `Paper`. Click on `MIMIC-IV` or `Landsat` to view the Entity Inspector drawer with direct relationships.
-4. **Semantic Vector Search**:
-   - Click the search pill `"federated learning medical imaging"` or type a natural language query.
-   - Show ranked cosine similarity matches with extracted topic, method, and dataset tags.
-5. **Cross-Disciplinary Collaboration**:
-   - Review the Computer Science ↔ Biomedical Engineering collaboration card (95% synergy) detailing joint grant rationale.
-6. **Redundancy Detection**:
-   - Review the redundancy card highlighting overlapping methodologies between decentralized imaging studies.
-7. **Live Document / Code Ingestion**:
-   - Click "Ingest Research & Code", upload a research paper or code repository ZIP, and watch the knowledge graph dynamically expand!
+- **Supabase** for PostgreSQL + pgvector hosting
+- **OpenRouter** for unified LLM API access
+- **Cytoscape.js** for graph visualization
+- **FastAPI** for the modern Python web framework
+- **Vite** for lightning-fast frontend tooling
+
+---
+
+*Built for researchers, by researchers. 🧪📊🔬*

@@ -17,7 +17,7 @@ if DATABASE_URL:
     try:
         import psycopg
         from psycopg.rows import dict_row
-        with psycopg.connect(DATABASE_URL, connect_timeout=3) as conn:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, prepare_threshold=None) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
         USE_POSTGRES = True
@@ -31,6 +31,10 @@ class DBConnection:
         self.is_postgres = USE_POSTGRES
         self.sqlite_path = SQLITE_DB_PATH
 
+    @property
+    def ph(self):
+        return "%s" if self.is_postgres else "?"
+
     def get_sqlite_conn(self):
         conn = sqlite3.connect(self.sqlite_path)
         conn.row_factory = sqlite3.Row
@@ -39,7 +43,7 @@ class DBConnection:
     def get_pg_conn(self):
         import psycopg
         from psycopg.rows import dict_row
-        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        return psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None)
 
     def init_db(self):
         if self.is_postgres:
@@ -322,8 +326,9 @@ def create_note(conn, title: str, content: str = "", tags: Optional[List[str]] =
     now = datetime.now(timezone.utc).isoformat()
     tags_json = json.dumps(tags or [])
     
+    ph = db.ph
     conn.execute(
-        "INSERT INTO notes (id, title, content, is_pinned, is_archived, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO notes (id, title, content, is_pinned, is_archived, tags, created_at, updated_at) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
         (note_id, title.strip() or "Untitled Note", content, 1 if is_pinned else 0, 0, tags_json, now, now)
     )
 
@@ -333,7 +338,7 @@ def create_note(conn, title: str, content: str = "", tags: Optional[List[str]] =
         target_name = link.strip()
         if target_name:
             conn.execute(
-                "INSERT INTO note_links (id, source_note_id, target_type, target_id, link_text, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                f"INSERT INTO note_links (id, source_note_id, target_type, target_id, link_text, created_at) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
                 (str(uuid.uuid4()), note_id, "WIKILINK", target_name, target_name, now)
             )
 
@@ -364,7 +369,8 @@ def get_notes(conn, query: Optional[str] = None, include_archived: bool = False)
 
 
 def get_note_by_id(conn, note_id: str) -> Optional[Dict[str, Any]]:
-    row = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
+    ph = db.ph
+    row = conn.execute(f"SELECT * FROM notes WHERE id = {ph}", (note_id,)).fetchone()
     if not row:
         return None
     note = dict(row)
@@ -372,7 +378,7 @@ def get_note_by_id(conn, note_id: str) -> Optional[Dict[str, Any]]:
     note["wikilinks"] = auto_detect_wikilinks(note.get("content", ""))
     
     # Fetch links
-    links = conn.execute("SELECT * FROM note_links WHERE source_note_id = ?", (note_id,)).fetchall()
+    links = conn.execute(f"SELECT * FROM note_links WHERE source_note_id = {ph}", (note_id,)).fetchall()
     note["links"] = [dict(l) for l in links]
     return note
 
@@ -389,19 +395,20 @@ def update_note(conn, note_id: str, title: Optional[str] = None, content: Option
     new_archived = 1 if is_archived else (0 if is_archived is False else existing["is_archived"])
     now = datetime.now(timezone.utc).isoformat()
     
+    ph = db.ph
     conn.execute(
-        "UPDATE notes SET title = ?, content = ?, tags = ?, is_pinned = ?, is_archived = ?, updated_at = ? WHERE id = ?",
+        f"UPDATE notes SET title = {ph}, content = {ph}, tags = {ph}, is_pinned = {ph}, is_archived = {ph}, updated_at = {ph} WHERE id = {ph}",
         (new_title, new_content, new_tags, new_pinned, new_archived, now, note_id)
     )
 
     # Refresh wikilinks if content changed
     if content is not None:
-        conn.execute("DELETE FROM note_links WHERE source_note_id = ?", (note_id,))
+        conn.execute(f"DELETE FROM note_links WHERE source_note_id = {ph}", (note_id,))
         for link in auto_detect_wikilinks(new_content):
             target_name = link.strip()
             if target_name:
                 conn.execute(
-                    "INSERT INTO note_links (id, source_note_id, target_type, target_id, link_text, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    f"INSERT INTO note_links (id, source_note_id, target_type, target_id, link_text, created_at) VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
                     (str(uuid.uuid4()), note_id, "WIKILINK", target_name, target_name, now)
                 )
 
@@ -409,16 +416,18 @@ def update_note(conn, note_id: str, title: Optional[str] = None, content: Option
 
 
 def delete_note(conn, note_id: str) -> bool:
-    row = conn.execute("SELECT id FROM notes WHERE id = ?", (note_id,)).fetchone()
+    ph = db.ph
+    row = conn.execute(f"SELECT id FROM notes WHERE id = {ph}", (note_id,)).fetchone()
     if not row:
         return False
-    conn.execute("DELETE FROM note_links WHERE source_note_id = ?", (note_id,))
-    conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+    conn.execute(f"DELETE FROM note_links WHERE source_note_id = {ph}", (note_id,))
+    conn.execute(f"DELETE FROM notes WHERE id = {ph}", (note_id,))
     return True
 
 
 def delete_document(conn, doc_id: str) -> bool:
-    row = conn.execute("SELECT id FROM documents WHERE id = ?", (doc_id,)).fetchone()
+    ph = db.ph
+    row = conn.execute(f"SELECT id FROM documents WHERE id = {ph}", (doc_id,)).fetchone()
     if not row:
         return False
     if db.is_postgres:
@@ -459,7 +468,8 @@ def get_note_graph_data(conn, note_id: str) -> Dict[str, Any]:
     for link in note["wikilinks"]:
         target_name = link.strip()
         # Find if entity exists
-        ent_row = conn.execute("SELECT id, name, entity_type FROM entities WHERE lower(name) = lower(?)", (target_name,)).fetchone()
+        ph = db.ph
+        ent_row = conn.execute(f"SELECT id, name, entity_type FROM entities WHERE lower(name) = lower({ph})", (target_name,)).fetchone()
         if ent_row:
             target_id = ent_row["id"]
             nodes.append({
@@ -490,7 +500,8 @@ def get_note_graph_data(conn, note_id: str) -> Dict[str, Any]:
 
 
 def get_document_graph_data(conn, document_id: str) -> Dict[str, Any]:
-    doc = conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+    ph = db.ph
+    doc = conn.execute(f"SELECT * FROM documents WHERE id = {ph}", (document_id,)).fetchone()
     if not doc:
         return {"nodes": [], "edges": []}
 

@@ -1,6 +1,7 @@
 import json
 from typing import List, Dict, Any, Optional
 from ai_engine import generate_local_embedding, cosine_similarity
+from database import db
 
 
 def get_dataset_matching(conn) -> List[Dict[str, Any]]:
@@ -9,7 +10,7 @@ def get_dataset_matching(conn) -> List[Dict[str, Any]]:
     Discovers all datasets used across research projects, detects cross-department usage,
     and highlights multi-department dataset synergies (e.g. MIMIC-IV in CS & Biomedical Engineering).
     """
-    cur = conn.cursor() if hasattr(conn, "cursor") and callable(getattr(conn, "cursor")) else conn
+    ph = db.ph
     
     query = """
     SELECT 
@@ -26,7 +27,7 @@ def get_dataset_matching(conn) -> List[Dict[str, Any]]:
     WHERE e.entity_type = 'DATASET'
     ORDER BY e.name, d.title
     """
-    rows = conn.execute(query).fetchall() if hasattr(conn, "execute") else cur.execute(query).fetchall()
+    rows = conn.execute(query).fetchall()
     
     datasets_map: Dict[str, Dict[str, Any]] = {}
     
@@ -55,10 +56,11 @@ def get_dataset_matching(conn) -> List[Dict[str, Any]]:
 
     # For each dataset, find associated methods and researchers
     result = []
+    ph = db.ph
     for ds_name, ds_info in datasets_map.items():
         doc_ids = list(ds_info["document_ids"])
         if doc_ids:
-            placeholders = ",".join(["?"] * len(doc_ids))
+            placeholders = ",".join([ph] * len(doc_ids))
             ent_query = f"""
             SELECT e.name, e.entity_type, de.document_id, d.department
             FROM entities e
@@ -114,6 +116,7 @@ def get_collaborations(conn) -> List[Dict[str, Any]]:
     Detects cross-disciplinary collaboration opportunities by scoring shared datasets,
     shared methods, semantic embedding closeness, and complementary topics across departments.
     """
+    ph = db.ph
     docs = conn.execute("SELECT * FROM documents ORDER BY created_at DESC").fetchall()
     if len(docs) < 2:
         return []
@@ -123,16 +126,16 @@ def get_collaborations(conn) -> List[Dict[str, Any]]:
     
     for d in docs:
         did = d["id"]
-        ents = conn.execute("""
+        ents = conn.execute(f"""
             SELECT e.id, e.name, e.entity_type 
             FROM entities e 
             JOIN document_entities de ON de.entity_id = e.id 
-            WHERE de.document_id = ?
+            WHERE de.document_id = {ph}
         """, (did,)).fetchall()
         doc_entities[did] = ents
         
         # Load embedding chunk
-        chunk = conn.execute("SELECT embedding FROM document_chunks WHERE document_id = ? LIMIT 1", (did,)).fetchone()
+        chunk = conn.execute(f"SELECT embedding FROM document_chunks WHERE document_id = {ph} LIMIT 1", (did,)).fetchone()
         emb = None
         if chunk and chunk["embedding"]:
             try:
@@ -240,17 +243,18 @@ def get_redundancy(conn) -> List[Dict[str, Any]]:
 
     doc_entities = {}
     doc_embeddings = {}
+    ph = db.ph
     for d in docs:
         did = d["id"]
-        ents = conn.execute("""
+        ents = conn.execute(f"""
             SELECT e.name, e.entity_type 
             FROM entities e 
             JOIN document_entities de ON de.entity_id = e.id 
-            WHERE de.document_id = ?
+            WHERE de.document_id = {ph}
         """, (did,)).fetchall()
         doc_entities[did] = ents
         
-        chunk = conn.execute("SELECT embedding FROM document_chunks WHERE document_id = ? LIMIT 1", (did,)).fetchone()
+        chunk = conn.execute(f"SELECT embedding FROM document_chunks WHERE document_id = {ph} LIMIT 1", (did,)).fetchone()
         emb = None
         if chunk and chunk["embedding"]:
             try:
@@ -326,13 +330,14 @@ def search_research(conn, query: str, limit: int = 10) -> List[Dict[str, Any]]:
 
     docs = conn.execute("SELECT * FROM documents").fetchall()
     results = []
+    ph = db.ph
 
     for d in docs:
         did = d["id"]
         d_dict = dict(d)
         
         # Fetch embedding
-        chunk = conn.execute("SELECT embedding FROM document_chunks WHERE document_id = ? LIMIT 1", (did,)).fetchone()
+        chunk = conn.execute(f"SELECT embedding FROM document_chunks WHERE document_id = {ph} LIMIT 1", (did,)).fetchone()
         doc_vec = None
         if chunk and chunk["embedding"]:
             try:
@@ -354,11 +359,11 @@ def search_research(conn, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         total_sim = round(min(0.99, v_sim + title_boost + content_boost), 3)
 
         if total_sim > 0.08:
-            ents = conn.execute("""
+            ents = conn.execute(f"""
                 SELECT e.name, e.entity_type 
                 FROM entities e 
                 JOIN document_entities de ON de.entity_id = e.id 
-                WHERE de.document_id = ?
+                WHERE de.document_id = {ph}
             """, (did,)).fetchall()
 
             topics = [e["name"] for e in ents if e["entity_type"] == "TOPIC"]
@@ -392,8 +397,9 @@ def get_graph_data(conn, type_filter: Optional[str] = None) -> Dict[str, Any]:
     Generates structured graph nodes and edges for Cytoscape visualization.
     Calculates degree centrality and enriches entity metadata.
     """
+    ph = db.ph
     if type_filter and type_filter.upper() != "ALL":
-        entities = conn.execute("SELECT * FROM entities WHERE entity_type = ? ORDER BY name", (type_filter.upper(),)).fetchall()
+        entities = conn.execute(f"SELECT * FROM entities WHERE entity_type = {ph} ORDER BY name", (type_filter.upper(),)).fetchall()
     else:
         entities = conn.execute("SELECT * FROM entities ORDER BY entity_type, name").fetchall()
 
